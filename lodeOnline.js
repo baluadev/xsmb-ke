@@ -1695,6 +1695,35 @@ printTextTable: function (top5) {
     this.addLine(line);
   });
 },
+printTextTableDe: function (top5) {
+  this.addLine('GỢI Ý ĐỀ NÊN ĐÁNH');
+  this.addLine('Điều kiện đẹp: Chưa về > Nhịp TB | -3 ≤ Lệch ≤ 1');
+  this.addLine('--------------------------------------------------');
+  this.addLine('# | Số | Điểm | Lần về | Chưa về | Nhịp TB | Lệch | Đánh giá');
+  this.addLine('--------------------------------------------------');
+
+  top5.forEach((item, index) => {
+    let label = 'BỎ';
+
+    if (item.deviation >= -3 && item.deviation <= 1) {
+      label = 'ĐẸP';
+    } else if (item.deviation > 1 && item.deviation <= 3) {
+      label = 'CÂN NHẮC';
+    }
+
+    const line =
+      `${index + 1} | ` +
+      `${item.number} | ` +
+      `${item.score} | ` +
+      `${item.count} | ` +
+      `${item.lastGap} | ` +
+      `${item.gapAvg} | ` +
+      `${item.deviation} | ` +
+      `${label}`;
+
+    this.addLine(line);
+  });
+},
   flushToLog: function () {
     var combined = this.lines.join("\n");
     console.log("combined");
@@ -1745,7 +1774,11 @@ printTextTable: function (top5) {
 this.printTextTable(sortByPriority);
 console.table(sortByPriority);
        
+var listDe =    this.getTop25De(history);
 
+      var  sortByPriorityDe = this.sortByPriority(listDe);
+this.printTextTableDe(sortByPriorityDe);
+console.table(sortByPriorityDe);
 
 
 // var kq = this.trangTrinh_1so(1988,9,18);
@@ -2246,24 +2279,21 @@ console.log(
   // FETCH JSON (server-side, KHÔNG cần CORS / proxy)
   // =======================
    async fetchJson(url) {
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Accept": "application/json, text/plain, */*",
-      "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-      "Accept-Encoding": "gzip, deflate, br",
-      "Referer": "https://xoso188.net/",
-      "Origin": "https://xoso188.net",
-      "Connection": "keep-alive",
-      "Sec-Fetch-Dest": "empty",
-      "Sec-Fetch-Mode": "cors",
-      "Sec-Fetch-Site": "same-origin"
-    }
-  });
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => res.statusText);
-    throw new Error(`Fetch failed: ${res.status} ${res.statusText} - ${errorText}`);
-  }
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://xoso188.net/",
+        "Origin": "https://xoso188.net",
+        "Connection": "keep-alive",
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin"
+      }
+    });
+  if (!res.ok) throw new Error("Fetch failed");
   return await res.json();
 },
 
@@ -3739,6 +3769,114 @@ extractLO:function (arr) {
     this.addDeviation(stats);
     return this.pickTop5(stats);
   },
+
+analyzeLoto1D: function (data) {
+    const stats = {};
+
+    // 00 → 99
+    for (let i = 0; i <= 99; i++) {
+      stats[i] = {
+        count: 0,
+        days: [],
+        gaps: [],
+        gapAvg: 0,
+        lastGap: null,
+        deviation: 0,
+      };
+    }
+
+    // data = [1,2,3,4,...]
+    data.forEach((num, dayIndex) => {
+      if (stats[num] !== undefined) {
+        stats[num].count++;
+        stats[num].days.push(dayIndex);
+      }
+    });
+
+    // tính gap
+    Object.values(stats).forEach(s => {
+      if (s.days.length > 1) {
+        for (let i = 1; i < s.days.length; i++) {
+          s.gaps.push(s.days[i] - s.days[i - 1]);
+        }
+        const sum = s.gaps.reduce((a, b) => a + b, 0);
+        s.gapAvg = sum / s.gaps.length;
+      }
+
+      // độ trễ hiện tại (overdue)
+      if (s.days.length > 0) {
+        const lastDay = s.days[s.days.length - 1];
+        s.lastGap = (data.length - 1) - lastDay;
+      }
+    });
+
+    return stats;
+  },
+
+  /***********************
+   * 2. ĐỘ LỆCH THỐNG KÊ
+   ***********************/
+  addDeviationDe: function (stats, totalDays) {
+    const expected = totalDays / 100; // phân bố đều xác suất
+
+    Object.values(stats).forEach(s => {
+      s.deviation = s.count - expected;
+    });
+
+    return stats;
+  },
+
+  /***********************
+   * 3. CHẤM ĐIỂM XÁC SUẤT
+   ***********************/
+  pickTop25: function (stats) {
+
+    const values = Object.values(stats);
+    const avgCount =
+      values.reduce((s, v) => s + v.count, 0) / values.length;
+
+    const scored = [];
+
+    Object.entries(stats).forEach(([num, s]) => {
+
+      if (s.count === 0 || s.gapAvg === 0) return;
+
+      // 🔢 các chỉ số
+      const overdueRatio = s.lastGap / s.gapAvg;      // quá hạn
+      const frequencyScore = s.count / avgCount;      // tần suất
+      const stabilityScore = 1 / (1 + Math.abs(s.deviation)); // ổn định phân bố
+
+      // 🎯 công thức điểm xác suất
+      const score =
+        overdueRatio * 2.5 +        // ưu tiên quá hạn
+        frequencyScore * 1.5 +      // ưu tiên tần suất
+        stabilityScore * 1.0;       // ưu tiên ổn định
+
+      scored.push({
+        number: Number(num),
+        score: Number(score.toFixed(3)),
+        count: s.count,
+        lastGap: s.lastGap,
+        gapAvg: Number(s.gapAvg.toFixed(2)),
+        deviation: Number(s.deviation.toFixed(2)),
+        overdueRatio: Number(overdueRatio.toFixed(2))
+      });
+    });
+
+    return scored
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 25);
+  },
+
+  /***********************
+   * 4. HÀM GỌI DUY NHẤT
+   ***********************/
+  getTop25De: function (data1D) {
+    const stats = this.analyzeLoto1D(data1D);
+    this.addDeviationDe(stats, data1D.length);
+    return this.pickTop25(stats);
+  },
+
 calcPriorityScore: function (item) {
   let score = 0;
 
